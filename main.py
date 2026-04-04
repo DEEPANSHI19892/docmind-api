@@ -1,9 +1,6 @@
 import os, base64, json, re, itertools
 import fitz
-import pytesseract
-
-pytesseract.pytesseract.tesseract_cmd = r'c:\Users\hp\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
-
+import requests
 from PIL import Image
 from io import BytesIO
 from docx import Document
@@ -24,6 +21,7 @@ app.add_middleware(
 )
 
 MY_API_KEY = os.getenv("MY_API_KEY", "sk_docmind_2026_secure")
+VISION_API_KEY = os.getenv("VISION_API_KEY", "")
 
 GEMINI_KEYS = [k for k in [
     os.getenv("GEMINI_KEY_1"),
@@ -44,35 +42,100 @@ class DocRequest(BaseModel):
     fileType: str
     fileBase64: str
 
+# ── PDF extraction ─────────────────────────────────────
 def extract_pdf(b: bytes) -> str:
-    doc = fitz.open(stream=b, filetype="pdf")
-    return "\n".join(page.get_text() for page in doc).strip()
+    try:
+        doc = fitz.open(stream=b, filetype="pdf")
+        text = "\n".join(page.get_text() for page in doc).strip()
+        if len(text) > 20:
+            return text
+    except Exception:
+        pass
+    return ""
 
+# ── DOCX extraction ────────────────────────────────────
 def extract_docx(b: bytes) -> str:
-    doc = Document(BytesIO(b))
-    return "\n".join(p.text for p in doc.paragraphs if p.text.strip()).strip()
+    try:
+        doc = Document(BytesIO(b))
+        text = "\n".join(p.text for p in doc.paragraphs if p.text.strip()).strip()
+        if len(text) > 20:
+            return text
+    except Exception:
+        pass
+    return ""
 
-def extract_image(b: bytes) -> str:
-    img = Image.open(BytesIO(b))
-    return pytesseract.image_to_string(img).strip()
+# ── Image OCR via Google Cloud Vision ─────────────────
+def extract_image_vision(b: bytes) -> str:
+    try:
+        b64_image = base64.b64encode(b).decode("utf-8")
+        url = f"https://vision.googleapis.com/v1/images:annotate?key={VISION_API_KEY}"
+        payload = {
+            "requests": [{
+                "image": {"content": b64_image},
+                "features": [{"type": "TEXT_DETECTION", "maxResults": 1}]
+            }]
+        }
+        resp = requests.post(url, json=payload, timeout=30)
+        data = resp.json()
+        annotations = data.get("responses", [{}])[0].get("textAnnotations", [])
+        if annotations:
+            return annotations[0].get("description", "").strip()
+    except Exception:
+        pass
+    return ""
 
+# ── Image OCR fallback via Gemini Vision ──────────────
+def extract_image_gemini(b: bytes) -> str:
+    try:
+        model = get_model()
+        image_part = {
+            "mime_type": "image/jpeg",
+            "data": base64.b64encode(b).decode("utf-8")
+        }
+        response = model.generate_content([
+            "Extract and return ALL text visible in this image. Return only the raw text, nothing else.",
+            image_part
+        ])
+        return response.text.strip()
+    except Exception:
+        pass
+    return ""
+
+# ── Smart text extractor ───────────────────────────────
 def extract_text(b: bytes, file_type: str) -> str:
     ft = file_type.lower().strip()
+
     if ft == "pdf":
-        return extract_pdf(b)
+        text = extract_pdf(b)
+        if len(text) > 20:
+            return text
+        # PDF might be scanned — try Vision OCR
+        return extract_image_vision(b) or extract_image_gemini(b)
+
     if ft in ("docx", "doc"):
-        return extract_docx(b)
+        text = extract_docx(b)
+        if len(text) > 20:
+            return text
+        return extract_image_vision(b) or extract_image_gemini(b)
+
     if ft in ("image", "jpg", "jpeg", "png", "gif", "bmp", "tiff", "webp"):
-        return extract_image(b)
-    for fn in [extract_pdf, extract_docx, extract_image]:
+        # Try Google Vision first, then Gemini Vision as fallback
+        text = extract_image_vision(b)
+        if len(text) > 20:
+            return text
+        return extract_image_gemini(b)
+
+    # Auto-detect fallback
+    for fn in [extract_pdf, extract_docx]:
         try:
             r = fn(b)
             if len(r) > 20:
                 return r
         except:
             pass
-    return ""
+    return extract_image_vision(b) or extract_image_gemini(b)
 
+# ── Gemini AI Analysis ─────────────────────────────────
 PROMPT = """Analyze the document text below. Return ONLY a valid JSON object. No markdown. No explanation. No code blocks. Just raw JSON.
 
 Document:
@@ -133,10 +196,12 @@ def analyze(text: str) -> dict:
         "sentiment": "Neutral"
     }
 
+# ── Main endpoint ──────────────────────────────────────
 @app.post("/api/document-analyze")
 async def analyze_document(req: DocRequest, x_api_key: str = Header(None)):
     if not x_api_key or x_api_key != MY_API_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized: Invalid API key")
+
     try:
         file_bytes = base64.b64decode(req.fileBase64)
     except Exception:
