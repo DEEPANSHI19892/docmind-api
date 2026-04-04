@@ -1,87 +1,147 @@
-# DocMind — AI-Powered Document Analysis & Extraction API
+DocMind — AI-Powered Document Analysis & Extraction API
 
-## Description
-DocMind is an intelligent document processing API that extracts, analyses, and summarises content from PDF, DOCX, and image files. It leverages Google Gemini AI and Google Cloud Vision OCR to understand document structure and extract key information automatically.
+📌 Description
 
-## Tech Stack
-- **Language/Framework:** Python 3.11 + FastAPI
-- **PDF Extraction:** PyMuPDF (fitz)
-- **DOCX Extraction:** python-docx
-- **OCR for Images:** Google Cloud Vision API
-- **AI Model:** Google Gemini 2.0 Flash (google-genai)
-- **Deployment:** Render.com
+DocMind is a production-ready document intelligence API that extracts, analyzes, and structures information from:
 
-## AI Tools Used
-- Google Gemini 2.0 Flash — summarisation, entity extraction, sentiment analysis
-- Google Cloud Vision API — OCR text extraction from images and scanned PDFs
-- Claude (Anthropic) — development assistance
+📄 PDFs (text & scanned)
+📝 DOCX files
+🖼 Images (JPG, PNG, TIFF, BMP)
 
-## API Usage
+It is engineered for automated evaluation environments with strict JSON compliance, low latency, and high reliability.
 
-### Endpoint
+🧠 AI Tools Used
+
+🔹 Google Gemini 2.0 Flash
+2–3 sentence structured summary
+Entity extraction (names, dates, organizations, amounts)
+Sentiment classification (Positive / Neutral / Negative)
+Strict JSON output enforcement
+
+🔹 Google Cloud Vision API
+OCR for images
+OCR for scanned PDFs
+
+🔹 Groq (Fallback LLM)
+Backup analysis if Gemini fails
+Ensures stability during automation testing
+
+🔹 Claude (Anthropic)
+Architecture & development assistance
+
+🔹 ChatGPT
+Optimization, debugging guidance, and documentation refinement
+
+🏗 Tech Stack
+
+Python 3.11
+FastAPI
+PyMuPDF (fitz) – PDF extraction
+python-docx – DOCX extraction
+Google Cloud Vision API – OCR
+Gemini 2.0 Flash (google-genai) – Primary LLM
+Groq – Fallback LLM
+Render.com – Deployment
+
+🌐 API Specification
+
+Endpoint
 POST /api/document-analyze
 
-### Headers
+Headers
 Content-Type: application/json
 x-api-key: YOUR_API_KEY
 
-### Request Body
-```json
+Request Body
 {
   "fileName": "document.pdf",
   "fileType": "pdf",
   "fileBase64": "base64_encoded_file_content"
 }
-```
-
-### Supported fileType values
-- `pdf` — PDF documents
-- `docx` — Word documents
-- `image` — JPG, PNG, BMP, TIFF images
-
-### Response
-```json
+Supported fileType
+pdf
+docx
+image
+Success Response
 {
   "status": "success",
   "fileName": "document.pdf",
-  "summary": "2-3 sentence summary of document content",
+  "summary": "Concise 2–3 sentence summary.",
   "entities": {
-    "names": ["person names"],
-    "dates": ["dates found"],
-    "organizations": ["company and institution names"],
-    "amounts": ["monetary values"]
+    "names": [],
+    "dates": [],
+    "organizations": [],
+    "amounts": []
   },
-  "sentiment": "Positive or Neutral or Negative"
+  "sentiment": "Neutral"
 }
-```
 
-## Setup Instructions
-1. `git clone https://github.com/YOUR_USERNAME/docmind-api`
-2. `cd docmind-api`
-3. `python -m venv venv && venv\Scripts\activate`
-4. `pip install -r requirements.txt`
-5. Copy `.env.example` to `.env` and fill in API keys
-6. `uvicorn main:app --host 0.0.0.0 --port 8000`
+⚙️ Architecture Overview
 
-## Architecture Overview
-- FastAPI receives Base64 encoded document
-- PyMuPDF extracts text from PDFs (text-based)
-- Scanned PDFs: converted to images via PyMuPDF, then OCR via Google Vision
-- DOCX: python-docx extracts all paragraphs and tables
-- Images: Google Cloud Vision API for OCR, Gemini Vision as fallback
-- Extracted text sent to Gemini 2.0 Flash for summary, entities, sentiment
-- 4-key rotation prevents rate limiting
+1️⃣ Extraction Layer
 
-## Approach
-- **PDF:** PyMuPDF first. If text < 20 chars (scanned), convert pages to JPEG and run OCR.
-- **DOCX:** python-docx reads paragraphs and table cells.
-- **Images:** Google Cloud Vision API primary, Gemini Vision fallback.
-- **AI Analysis:** Gemini 2.0 Flash with structured JSON prompt, regex fallback for JSON parsing.
-- **Key rotation:** 4 Gemini API keys cycled to handle rate limits across 15 test cases.
+Text-based PDF → PyMuPDF
+Scanned PDF → Page images → Vision OCR
+DOCX → Paragraph + table extraction
+Images → Vision OCR
 
-## Known Limitations
-- Very large files (>50MB) may timeout on free hosting tier
-- Handwritten text OCR accuracy depends on image quality
+2️⃣ AI Analysis Layer
 
-## Environment Variables
-See `.env.example` for required variables.
+Structured prompt → Gemini 2.0 Flash
+Strict JSON output required
+Regex-based JSON recovery if malformed
+
+3️⃣ Reliability Layer
+
+4-key Gemini rotation (itertools.cycle)
+Automatic retry on quota errors
+Groq fallback model
+Guaranteed structured response
+
+⚡ Performance Design
+
+In-memory processing (no disk writes)
+OCR only when required
+Optimized prompt size
+Multi-key rotation prevents rate-limit delays
+Target response time: <7 seconds
+
+🧪 Setup
+
+git clone https://github.com/YOUR_USERNAME/docmind-api
+cd docmind-api
+python -m venv venv
+pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8000
+
+🔐 Environment Variables
+MY_API_KEY=
+VISION_API_KEY=
+GEMINI_KEY_1=
+GEMINI_KEY_2=
+GEMINI_KEY_3=
+GEMINI_KEY_4=
+GROQ_KEY=
+
+🩺 Health Check
+GET /health
+
+Response:
+
+{
+  "status": "healthy"
+}
+
+🏆 Competitive Strengths
+
+✔ Handles scanned + text PDFs
+✔ Vision OCR integration
+✔ Multi-LLM fallback
+✔ 4-key rotation for rate-limit protection
+✔ Strict JSON compliance
+✔ Automation-test optimized
+✔ Production deployment
+
+🎯 Conclusion
+
+DocMind is a resilient, AI-powered document intelligence API designed for structured extraction, fast response, and reliable automated evaluation performance.
